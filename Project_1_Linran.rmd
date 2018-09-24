@@ -1,0 +1,226 @@
+---
+title: "Project_1_Linran_Zhou"
+author: "Linran Zhou"
+date: "`r format(Sys.time(), '%m/%d/%Y')`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(tidyverse)
+```
+
+#***Pharmacokinetics of Indomethacin***
+
+Pharmacokinetics is a key branch of pharmacology concerned with the fate of substances given to living organisms. It studies how an organism affects a substance, whereas pharmacodynamics studies how a substance affects the organism. In this example, we look at the "Indometh" dataset in R, which was derived from a 1976 article in the _Journal of Pharmacokinetics and Biopharmaceutics_. As part of this study, six subjects were each given an initial intravenous dose of indomethacin, and at various timepoints, blood samples were taken from each subject to determine plasma concentrations. Indomethacin is a nonsteroidal anti-inflammatory drug (NSAID) that works by inhibiting cyclooxygenase, an enzyme that catalyzes production of endogenous signaling molecules called prostaglandins. The drug is rather potent and is not to be taken the same way people might take ibuprofen.
+
+```{r,echo=FALSE}
+#Dataset 1: Pharmacokinetics of Indomethacin
+data(Indometh)
+
+Inm<-as.tibble(Indometh)
+
+#Create additional variables to calculate mean and standard deviation of drug concentrations across all six subjects at each timepoint
+Inm%>%group_by(time)%>%mutate(mean_conc=mean(conc),sd_conc=sd(conc))->Inm_change
+
+#Remove subject IDs and conc to only retain the mean and standard deviation of drug concentrations for all six subjects at each timepoint
+Inm_change%>%select(-Subject,-conc)%>%distinct()->Inm_trunc
+
+#Create plot of all subjects' data, with mean and standard deviations superimposed 
+
+ggplot()+
+  geom_point(data=Inm,mapping=aes(x=time,y=conc,colour=Subject),size=1.5)+scale_colour_hue(breaks=c("1","2","3","4","5","6"))+
+  geom_point(data=Inm_trunc,mapping=aes(x=time,y=mean_conc),shape=21,fill="white")+
+  geom_line(data=Inm_trunc,mapping=aes(x=time,y=mean_conc),size=2,alpha=0.1)+
+  geom_errorbar(data=Inm_trunc,mapping=aes(x=time,ymin=mean_conc-sd_conc,ymax=mean_conc+sd_conc),width=0.25,size=1.5,alpha=0.1)+
+  scale_y_continuous(name="Plasma Concentration (ug/mL)",breaks=seq(0,3,by=0.5))+
+  scale_x_continuous(name="Time of Blood Draw (hr)",breaks=seq(0,8,by=1))+
+  labs(title="Pharmacokinetics of Indomethacin in 6 Subjects over 8 Hours",
+  caption = "Drug plasma concentrations for each subject are plotted as individual points.
+  \n The line and white points are used to represent the mean plasma concentration at each time point. 
+  \n The error bars represent a range of two standard deviations of the plasma concentrations.")+theme(plot.title=element_text(hjust=0.5))
+
+
+```
+
+The figure displayed above first plots the plasma concentrations of the drug for each subject at each time point. Since there are only 6 subjects, readers can see the range of data collected in the experiment. Then, summary statistics (the mean and standard deviation) are computed for the 6 subjects at each time point. The white dot is the mean plasma concentration at each timepoint, and the error bars extend 1 standard deviation above and below the mean. At the $0.25$ hr time point, we have $`r round(Inm_trunc$mean_conc[1],digits=2)` \pm `r round(Inm_trunc$sd_conc[1],digits=2)`$ $\mu g/mL$. The measured plasma concentration decreases quite quickly. For example, at the $0.75$ hr time point 30 minutes later, we have $`r round(Inm_trunc$mean_conc[3],digits=2)` \pm `r round(Inm_trunc$sd_conc[3],digits=2)`$ $\mu g/mL$, a roughly $`r round((Inm_trunc$mean_conc[3]-Inm_trunc$mean_conc[1])/(Inm_trunc$mean_conc[1])*100)`\%$ change. Another 30 minutes later, the mean plasma concentration decreases by about $`r round((Inm_trunc$mean_conc[3]-Inm_trunc$mean_conc[5])/(Inm_trunc$mean_conc[3])*100)`\%$. The spread of measurements, both in terms of the range and standard deviation, also decreases as time passes, which can be confirmed visually using the figure. As time passes, more and more of the drug will be metabolized and excreted, so the absolute differences will become smaller. The fact that the plasma measurements all converge on roughly the same timescale and to the same extent suggests that these six subjects have similarly functioning mechanisms of elimination for this drug. As a next step, it would be interesting to determine the major metabolites formed and the levels of each over the same time course. This would give an idea of the pathways by which indomethacin is metabolized and the routes through which it is excreted.     
+
+#***Puromycin and Reaction Velocity of Enzymatic Reaction***
+
+Enzymes are macromolecular biological catalysts, which act upon specific substrates and accelerate chemical reactions. An important area of enzyme study is how enzyme activity is affected by other molecules. For example, some enzymes require cofactors, or certain non-protein molecules, bound to them to demonstrate full activity. Enzyme activators are molecules that bind to enzymes and increase their activity, whereas enzyme inhibitors are molecules that decrease activity. We look at the "Puromycin" dataset in R, which was derived from a 1974 M.Sc. thesis completed at the University of Toronto. This experiment studies an enzymatic reaction involving cells either treated with or without the antibiotic puromycin, which is toxic to prokaryotic and eukaryotic cells.
+
+```{r echo=FALSE}
+#Dataset 2: Puromycin and Reaction Velocity of an Enzymatic Reaction
+data(Puromycin)
+
+Puro<-as.tibble(Puromycin)
+
+#Create variables for 1/concentration and 1/rate and create separate tibbles (for cells treated and untreated with puromycin)
+
+Puro%>%mutate(Inv_rate=1/rate,Inv_conc=1/conc)->Puro_mod
+
+Puro_mod%>%filter(state=="treated")->Puro_LB_treated
+
+Puro_mod%>%filter(state=="untreated")->Puro_LB_untreated
+
+#Calculating the Michaelis-Menten constant and maximum reaction velocity.
+#Y-intercept is 1/(maximum reaction velocity)
+#X-intercept is -1/(Michaelis-Menten constant)
+
+#For untreated
+
+lm(Inv_rate~Inv_conc,Puro_LB_untreated)->lm_untreated
+
+#summary(lm_untreated) #Gives summary statistics
+
+#names(summary(lm_untreated)) #Find names of the elements I want
+
+as.data.frame(summary(lm_untreated)$coefficients)$Estimate -> lm_untreated_int_slope
+
+Vmax_untreated=round(1/(lm_untreated_int_slope[1]),digits=2)
+
+
+Km_untreated=round(-1/(-lm_untreated_int_slope[1]/lm_untreated_int_slope[2]),digits=4)
+
+
+untreated_eqn<-paste("y = ",formatC(lm_untreated_int_slope[2],format='e',digits=2)," x + ",formatC(lm_untreated_int_slope[1],format='e',digits=2),sep="")
+
+
+#For treated 
+
+lm(Inv_rate~Inv_conc,Puro_LB_treated)->lm_treated
+
+#summary(lm_treated) #Gives summary statistics
+
+#names(summary(lm_treated)) #Find names of the elements I want
+
+as.data.frame(summary(lm_treated)$coefficients)$Estimate -> lm_treated_int_slope
+
+Vmax_treated=round(1/(lm_treated_int_slope[1]),digits=2)
+
+Km_treated=round(-1/(-lm_treated_int_slope[1]/lm_treated_int_slope[2]),digits=4)
+
+treated_eqn<-paste("y = ",formatC(lm_treated_int_slope[2],format='e',digits=2)," x + ",formatC(lm_treated_int_slope[1],format='e',digits=2),sep="")
+
+
+
+#Plotting
+ggplot()+
+  geom_point(data=Puro_mod,mapping=aes(x=Inv_conc,y=Inv_rate,colour=state))+
+  scale_x_continuous(name="Reciprocal Substrate Concentration (1/ppm)",limits=c(-40,50),breaks=seq(-40,50,by=10))+
+  scale_y_continuous(name="Reciprocal Reaction Rate (1/counts/min/min)",limits=c(-0.01,0.025),breaks=seq(-0.01,0.03,by=0.005))+
+  geom_vline(xintercept=0)+
+  geom_hline(yintercept=0)+
+  scale_colour_manual(values=c("red","blue"))+
+  geom_smooth(data=Puro_LB_treated,mapping=aes(x=Inv_conc,y=Inv_rate),colour="red",method="lm",se=FALSE,fullrange=TRUE)+
+  annotate('text',label=treated_eqn,x=30,y=0.005,colour="red")+
+  geom_smooth(data=Puro_LB_untreated,mapping=aes(x=Inv_conc,y=Inv_rate),colour="blue",method="lm",se=FALSE,fullrange=TRUE)+
+  annotate('text',label=untreated_eqn,x=20,y=0.017,colour="blue")+
+  labs(title="Lineweaver-Burk Plot of an Enzymatic Reaction in Cells \n with or without Puromycin Treatment",
+       caption = "Datapoints are grouped by treatment status.
+        \n The reciprocals of the substrate concentrations and reaction rates are then plotted.
+       \n The blue and red lines represent the Lineweaver-Burk equation for each treatment group. 
+       \n The lines are extrapolated to graphically show important terms.")+theme(plot.title=element_text(hjust=0.5))
+
+
+
+ 
+```
+
+In enzyme kinetics, the reaction rate (or speed at which reactants are converted into products) is measured, and the effects of varying reactions conditions are measured. One of the most famous models of enzyme kinetics is Michaelis-Menten kinetics, which relates reaction rate $v$ (rate of formation of product $[P]$) to substrate concentration $[S]$. The equation is given by: $$ v=\frac{d[P]}{dt}=\frac{V_{max}[S]}{K_M+[S]}$$, where $V_{max}$ is the maximum rate of the system and $K_M$, known as the Michaelis-Menten constant, is the substrate concentration at which $v=\frac{1}{2}V_{max}$.
+
+Before the advent of powerful computers and non-linear regression software, a type of graph known as a Lineweaver-Burk plot was used to calculate $V_{max}$ and $K_M$. Taking the reciprocal of the Michaelis-Menten equation, you get: $$\frac{1}{v}=\frac{K_M+[S]}{V_{max}{[S]}}=\frac{K_M}{V_{Max}}\frac{1}{[S]}+\frac{1}{V_{max}}$$
+
+If you match an equation from a linear regression to this equation, the y-intercept is $\frac{1}{V_{max}}$ and the x-intercept is $\frac{-1}{K_M}$. In our plot, you can see points are separated into two groups based on puromycin treatment status, and you can see the equations for the lines of best fit. For the cells not treated with puromycin, $V_{max}=`r Vmax_untreated`$ counts/min/min and $K_m=`r Km_untreated`$ ppm. For the cells that were treated with puromycin, $V_{max}=`r Vmax_treated`$ counts/min/min and $K_m=`r Km_treated`$ ppm.
+
+Using this double reciprocal plot distorts the error structure of the data, so it is considered rather unreliable in for determining kinetic parameters, especially considering the tools available today. However, the Lineweaver-Burk plot can still be useful in distinguishing between certain types of enzyme inhibitor behavior (competitive, non-competitive, and uncompetitive) by comparing the equations of the line for the reaction with the inhibitor and without. In this dataset, the two equations do not match up particularly well with any of the three cases, so the plot is not particularly revealing. It could be possible that puromycin does not inhibit the activity of this enzyme. As a next step, it would be interesting to use more advanced statistical methods to better calculate these kinetic parameters and determine the type of inhibition. In addition, it would be interesting to see the effects of puromycin on either other enzyme-catalyzed reactions or the same reaction in different cell types.
+
+#***ELISA Assay of DNase***
+
+The **enzyme-linked immunosorbent assay** or (**ELISA**) is a commonly used biochemical analytical assay, which uses antibodies (either single or pairs) to detect the presence of a protein or other ligand in a liquid sample. First, sample antigens are affixed to a surface, and a specific antibody is applied to bind to the antigen. This antibody is linked to an enzyme, so a substance containing the enzyme substrate is added. The enzyme reaction produces a detectable signal, such as a color change. In this example, we look at the "DNase" dataset from R, which looks at data from the development of an ELISA assay for recombinant DNase in rat serum. There are 11 reaction runs, and within reaction runs, there are duplicate optical density measurements for each known protein concentration. This was used to construct a standard curve.
+
+```{r echo=FALSE}
+#Dataset 3: ELISA Assay of DNase
+
+data(DNase)
+
+dna<-as.tibble(DNase)
+
+#Convert concentrations to log10 scale and create summary statistics for both all runs together and individual runs.
+
+dna%>%mutate(log_conc=log10(conc))%>%group_by(Run,log_conc)%>%summarise(mean_density=mean(density),sd_density=sd(density))->summed_log_dna
+
+dna%>%mutate(log_conc=log10(conc))%>%group_by(log_conc)%>%summarise(mean_density=mean(density),sd_density=sd(density))->summed_mean_log_dna
+
+summed_log_dna%>%filter(log_conc >=-0.25, log_conc<=1.25)->linear_log_dna #Create another tibble with just the data that falls within a predicted linear dynamic range
+
+lm(mean_density~log_conc,linear_log_dna)->lm_linear
+
+as.data.frame(summary(lm_linear)$coefficients)$Estimate->lm_linear_int_slope
+
+lin_range_eqn<-paste("y = ",formatC(lm_linear_int_slope[2],format='e',digits=2)," x + ",formatC(lm_linear_int_slope[1],format='e',digits=2),sep="")
+
+
+ggplot()+
+  geom_point(data=summed_mean_log_dna,mapping=aes(x=log_conc,y=mean_density),fill="brown",size=4,shape=23,alpha=0.3)+
+  geom_point(data=summed_log_dna,mapping=aes(x=log_conc,y=mean_density,colour=Run))+
+  scale_colour_hue(breaks=c("1","2","3","4","5","6","7","8","9","10","11"))+
+  geom_line(data=summed_mean_log_dna,mapping=aes(x=log_conc,y=mean_density),colour="brown",size=2,alpha=0.3)+
+  geom_errorbar(data=summed_mean_log_dna,mapping=aes(x=log_conc,ymin=mean_density-sd_density,ymax=mean_density+sd_density),colour="brown",width=0.1,size=1.5,alpha=0.2)+
+  geom_smooth(data=linear_log_dna,mapping=aes(x=log_conc,y=mean_density),method="lm",se=FALSE,size=1,alpha=0.2)+
+  geom_vline(xintercept=-0.25)+
+  geom_vline(xintercept=1.25)+
+  annotate('text',label="Reasonable dynamic \n linear range",x=0.5,y=0.25)+
+  annotate('text',label=lin_range_eqn,x=0.25,y=1.5,colour="blue")+
+  xlab('Protein Concentration (log10 Scale)')+
+  ylab('Measured Optical Density')+
+  labs(title="Standard Curve of ELISA Assay for Recombinant DNase in Rat Serum",
+       caption = "Log10 Concentrations were first calculated for each protein sample.
+       \n Averaged optical densities measured for each protein concentration were plotted for run. 
+       \n Measured optical densities for the same concentration across all runs were then averaged and plotted.
+       \n The error bars represent a range of two standard deviations of the optical densities.
+       \n A dynamic linear range was assessed visually, and a linear regression was performed.")+
+  theme(plot.title=element_text(hjust=0.5))
+```
+
+When creating a standard ELISA curve, it is not uncommon to see some people use the concentrations as is while other people convert the concentrations to a log10 scale. I chose to use the log10 scale because that created the most sigmoidal standard curve. Most ELISA standard curves are sigmoidal, plateauing at low and high substrate concentrations. Basic enzyme kinetics can help explain this. At low substrate concentrations, there isn't enough substrate for enzyme-substrate interactions to occur frequently, so the signal (in this case, optical density) is weak. At high substrate concentrations, there might be too much substrate, and most, if not all, of the enzyme is reacting with substrate at any given time. So, an increase in substrate concentration would not lead to an increase in signal.
+
+Within each reaction run, the duplicate measurements of optical density for each concentration were averaged. Then, for each concentration, the averaged value from each run was plotted. When conducting biochemical assays, it is considered good practice to make a new standard curve each time you do the assay, so I wanted to be able to see how much each run differed. Following that, I computed the average and standard deviation of the optical density across all runs, and plotted that onto the figure. For each concentration, most of the runs fall within one standard deviation of the mean. There are a few runs that do not at the higher concentrations of protein, where we might be running into saturation effects. Nevertheless, if I were to construct a standard curve, it would seem okay to use any individual run or all runs averaged together. The simplest method would be to perform linear regression only on the region of the curve that appears most linear. The more complex method (and probably more suitable for many biological systems) would be to use four parameter logistic regression, and there are software packages to assist with this. Based on simple visual analysis (which is admittedly what most biologists would do in a pinch), a reasonable linear region could extend from -0.25 to 1.25 (log10 scale of protein concentration) to encapsulate the last 5 sets of protein standards used. A simple analysis shows that $r^2=`r round(as.data.frame(summary(lm_linear)$r.squared),digits=4)`$ for this linear fit across those points.
+
+As a next step, it would probably be a good idea to add more protein standards at the upper and lower tails and extend the concentration range until we see greater plateauing. In the current figure, there seems to be more plateauing in the lower tail than the upper tail, so I would definitely add more protein standards with a higher concentration. This would help in establishing a dynamic linear range for the assay. In addition, it would be interesting to use more advanced nonlinear models to construct a standard curve, use it for experimental assays, and compare the calculated results to a standard curve that just uses the most "linear" portion.
+
+#***The Effect of Vitamin C on Tooth Growth in Guinea Pigs***
+
+In vertebrates, odontoblasts are cells in the dental pulp that produce dentin, which is necessary for the support of the enamel. In this example, we look at the "ToothGrowth" dataset in R, which is derived from a 1947 paper in _The Journal of Nutrition_. In this experiment, each of 60 guinea pigs received one of three daily dose levels of vitamin C by one of two delivery methods.
+
+```{r echo=FALSE}
+#Dataset 4:  The Effect of Vitamin C on Tooth Growth in Guinea Pigs
+
+data(ToothGrowth)
+
+tooth<-as.tibble(ToothGrowth)
+
+
+#Create summary statistics for each combination of delibery method and dose to compare means to median graphically.
+
+tooth%>%group_by(supp,dose)%>%summarise(mean_length=mean(len),median_length=median(len), IQR_half=IQR(len)/2,sd_length=sd(len))->summed_tooth
+
+
+
+ggplot()+
+  geom_boxplot(data=tooth,mapping=aes(x=as.factor(dose),y=len,colour=supp))+
+  geom_point(data=summed_tooth,mapping=aes(x=as.factor(dose),y=mean_length,colour=supp),shape=17,size=2.5)+
+  xlab('Vitamin C Dose (mg/day)')+
+  ylab("Length of Odontoblasts")+
+  labs(title="Effect of Vitamin C Dose and Delivery Method on Tooth Growth in Guinea Pigs",
+       caption="Means of the corresponding datasets are plotted (as triangles) to compare to the median.")+
+  theme(plot.title=element_text(hjust=0.5))
+
+```
+
+The experimental design involves three different doses and two different delivery methods, so there are 6 possible combinations of experimental factors to compare. For the $0.5$ mg/day dose, we have a median odontoblast length + IQR of $`r summed_tooth$median_length[1]`$ $\pm$ $`r summed_tooth$IQR_half[1]`$ with orange juice delivery and $`r summed_tooth$median_length[4]`$ $\pm$ $`r summed_tooth$IQR_half[4]`$ with ascorbic acid delivery. For the $1.0$ mg/day dose, the median odontoblast length + IQR for orange juice delivery and ascorbic acid delivery is $`r summed_tooth$median_length[2]`$ $\pm$ $`r summed_tooth$IQR_half[2]`$ and $`r summed_tooth$median_length[5]`$ $\pm$ $`r summed_tooth$IQR_half[5]`$, respectively. Finally, for the $2.0$ mg/day dose, the median odontoblast length + IQR for orange juice and ascorbic acid delivery is $`r summed_tooth$median_length[3]`$ $\pm$ $`r summed_tooth$IQR_half[3]`$ and $`r summed_tooth$median_length[6]`$ $\pm$ $`r summed_tooth$IQR_half[6]`$, respectively.
+
+From looking at the boxplots, it is clear that delivery by orange juice is correlated with longer odontoblasts compared to delivery by ascorbic acid at the 0.5 mg/day dose. The same is true for the 1.0 mg/day dose. However, at the highest dose, the odontoblasts seem to be about the same length for both delivery methods. It seems that orange juice has a generally greater effect on tooth growth compared to ascorbic acid in guinea pigs, which could have something to do with the bioavailability of vitamin C through each method. Even if the doses are the same, the delivery method could affect the amount that reaches circulation and has an active effect. Following this hypothesis, it would seem that orange juice results in a higher bioavailability of vitamin C. At the highest dose, it could be that both delivery methods deliver enough vitamin C to circulation that we start to see a plateau effect. This also seems consistent with the fact that the increase in odontoblast length from 1.0 mg/day to 2.0 mg/day is not as large as the increase from 0.5 mg/day to 1.0 mg/day.
+
+As a next step, it would be interesting to determine the bioavailability of vitamin C by each delivery method. It would also be useful to run a more controlled study comparing vitamin C supplementation to no vitamin C supplementation and to vary the dose levels some more. I would also take better care to standardize the oral health/teeth formation of the animals used in the study.
